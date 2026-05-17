@@ -71,7 +71,7 @@ export default class PopularityServer implements Party.Server {
         case "kick":           return this.hostOnly(sender, () => this.onKick(msg));
         case "toggle-die":     return this.hostOnly(sender, () => { this.config.useDie = !!msg.value; this.broadcast(); });
         case "set-seed":       return this.hostOnly(sender, () => { this.config.seed = (msg.value >>> 0) || 1; this.broadcast(); });
-        case "start":          return this.hostOnly(sender, () => this.onStart());
+        case "start":          return this.hostOnly(sender, () => this.onStartGame());
         case "submit":         return this.onSubmit(sender, msg);
         case "continue":       return this.onContinue(sender);
         case "next-match":     return this.hostOnly(sender, () => this.onNextMatch());
@@ -166,7 +166,7 @@ export default class PopularityServer implements Party.Server {
     this.broadcast();
   }
 
-  private onStart() {
+  private onStartGame() {
     if (this.started) throw new Error("already started");
     if (this.seats.length < 3) throw new Error("need at least 3 seats");
     this.G = E.newGame({
