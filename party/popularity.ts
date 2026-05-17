@@ -63,15 +63,15 @@ export default class PopularityServer implements Party.Server {
     try {
       switch (msg.type) {
         case "join":           return this.onJoin(sender, msg);
-        case "add-ai":         return this.hostOnly(sender, () => this.onAddAI(msg));
-        case "kick":           return this.hostOnly(sender, () => this.onKick(msg));
-        case "toggle-die":     return this.hostOnly(sender, () => { this.config.useDie = !!msg.value; this.broadcast(); });
-        case "set-seed":       return this.hostOnly(sender, () => { this.config.seed = (msg.value >>> 0) || 1; this.broadcast(); });
-        case "start":          return this.hostOnly(sender, () => this.onStartGame());
+        case "add-ai":         return this.seatedOnly(sender, () => this.onAddAI(msg));
+        case "kick":           return this.seatedOnly(sender, () => this.onKick(msg));
+        case "toggle-die":     return this.seatedOnly(sender, () => { this.config.useDie = !!msg.value; this.broadcast(); });
+        case "set-seed":       return this.seatedOnly(sender, () => { this.config.seed = (msg.value >>> 0) || 1; this.broadcast(); });
+        case "start":          return this.seatedOnly(sender, () => this.onStartGame());
         case "submit":         return this.onSubmit(sender, msg);
         case "continue":       return this.onContinue(sender);
-        case "next-match":     return this.hostOnly(sender, () => this.onNextMatch());
-        case "reset":          return this.hostOnly(sender, () => this.onReset());
+        case "next-match":     return this.seatedOnly(sender, () => this.onNextMatch());
+        case "reset":          return this.seatedOnly(sender, () => this.onReset());
         default:               return this.err(sender, "unknown message type: " + msg.type);
       }
     } catch (e: any) {
@@ -80,8 +80,11 @@ export default class PopularityServer implements Party.Server {
   }
 
   // --- helpers ---
-  private hostOnly(sender: Party.Connection, fn: () => void) {
-    if (sender.id !== this.hostConnId) return this.err(sender, "host only");
+  private seatedOnly(sender: Party.Connection, fn: () => void) {
+    // Any seated player can perform admin actions. Avoids deadlocks when the
+    // original "host" disconnects before others arrive.
+    const seat = this.seatForConn(sender.id);
+    if (!seat) return this.err(sender, "join the room first to do that");
     fn();
   }
 

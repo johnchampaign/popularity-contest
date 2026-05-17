@@ -198,7 +198,7 @@ function renderHeader() {
       onclick: () => navigator.clipboard?.writeText(location.href).then(() => { lastError = "Invite link copied!"; render(); setTimeout(() => { lastError=""; render(); }, 1500); })
     }, "Copy invite link"),
     el("span", { class: "status " + c }, " · " + connStatus),
-    el("span", { class: "small", title: "client build" }, " · b5"),
+    el("span", { class: "small", title: "client build" }, " · b6"),
     el("button", { style: "margin-left:auto", onclick: () => openReport({
       getState: () => serverState,
       getLog: () => (serverState?.G?.log || []).slice(-40).map(e => typeof e === "string" ? e : e.text),
@@ -241,8 +241,8 @@ function renderLobby() {
   }
   wrap.appendChild(grid);
 
-  if (serverState.youAreHost) {
-    wrap.appendChild(el("h2", null, "Host controls"));
+  if (mySeat) {
+    wrap.appendChild(el("h2", null, "Controls (any seated player)"));
     wrap.appendChild(el("div", { class: "row" },
       el("button", { onclick: () => send({ type: "add-ai", name: aiName(serverState.seats.length) }) }, "+ Add AI seat"),
       el("label", { class: "row" },
