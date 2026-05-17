@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pwd && ls ~/.claude/projects/ 2>/dev/null | head -30)",
+      "Bash(ls \"C:\\\\Users\\\\johnc\\\\Claude Games\\\\Dimensional Traveler\" 2>&1 | head -30)",
+      "WebFetch(domain:boardgamegeek.com)",
+      "WebSearch",
+      "WebFetch(domain:www.thegamecrafter.com)",
+      "WebFetch(domain:www.youtube.com)",
+      "Bash(yt-dlp --skip-download --write-auto-sub --sub-lang en --sub-format vtt -o \"C:/Users/johnc/Claude Games/Popularity Contest/transcript.%\\(ext\\)s\" \"https://www.youtube.com/watch?v=qjo9HKq8UPg\")",
+      "Bash(command -v youtube-dl)",
+      "Bash(where.exe yt-dlp *)",
+      "Bash(tasklist)",
+      "WebFetch(domain:tactiq.io)",
+      "WebFetch(domain:youtubetotranscript.com)",
+      "WebFetch(domain:www.youtube-transcript.io)",
+      "WebFetch(domain:kome.ai)",
+      "Bash(gh auth *)"
+    ]
+  }
+}

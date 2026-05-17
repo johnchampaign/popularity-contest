@@ -1,0 +1,774 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Popularity Contest</title>
+<style>
+  :root {
+    --bg:#1c1f24; --panel:#262b33; --panel2:#2f353f; --line:#3a414d;
+    --text:#e6e9ef; --dim:#8a93a3; --accent:#5aa9ff; --warn:#ffb454; --bad:#ff6b6b; --good:#7bd88f;
+  }
+  * { box-sizing: border-box; }
+  html,body { margin:0; padding:0; height:100%; background:var(--bg); color:var(--text); font:14px/1.4 system-ui, sans-serif; }
+  #app { max-width:1100px; margin:0 auto; padding:16px; }
+  h1 { margin:0 0 8px; font-size:22px; }
+  h2 { margin:18px 0 8px; font-size:16px; color:var(--accent); }
+  button { background:var(--panel2); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px 12px; cursor:pointer; font:inherit; }
+  button:hover:not(:disabled) { background:#3a414d; }
+  button:disabled { opacity:0.4; cursor:not-allowed; }
+  button.primary { background:var(--accent); color:#0a1018; border-color:var(--accent); font-weight:600; }
+  button.danger { background:var(--bad); color:#1a0606; border-color:var(--bad); }
+  input, select { background:var(--panel2); color:var(--text); border:1px solid var(--line); border-radius:4px; padding:4px 8px; font:inherit; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; margin-bottom:12px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .players-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:8px; }
+  .player-card { background:var(--panel2); border:1px solid var(--line); border-radius:6px; padding:8px; }
+  .player-card.elim { opacity:0.5; }
+  .player-card.active { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+  .pname { font-weight:600; }
+  .ptag { font-size:11px; color:var(--dim); margin-left:6px; }
+  .card { display:inline-flex; flex-direction:column; align-items:center; justify-content:center;
+    width:54px; height:78px; border-radius:6px; border:2px solid #000; background:#fff; color:#000;
+    font-weight:900; font-size:24px; margin:3px; cursor:pointer; user-select:none; position:relative;
+    box-shadow:0 2px 4px rgba(0,0,0,0.4); }
+  .card.pos1 { color:#2ea043; }
+  .card.pos2 { color:#2ea043; }
+  .card.zero { color:#1f6feb; font-size:30px; }
+  .card.neg1 { color:#cf222e; }
+  .card.neg2 { color:#cf222e; }
+  .card.back { background:linear-gradient(135deg,#3a414d,#1c1f24); color:#5aa9ff; border-color:#5aa9ff; font-size:18px; }
+  .card.selected { transform:translateY(-8px); box-shadow:0 6px 8px rgba(90,169,255,0.6); border-color:var(--accent); }
+  .card.tiny { width:32px; height:46px; font-size:16px; margin:1px; }
+  .card.tiny.zero { font-size:18px; }
+  .hand { display:flex; flex-wrap:wrap; min-height:90px; padding:4px; background:#181b20; border-radius:6px; }
+  .targets { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  .target-btn { background:var(--panel); border:1px dashed var(--line); border-radius:6px; padding:6px 10px; cursor:pointer; }
+  .target-btn:hover { border-color:var(--accent); }
+  .target-btn.self { border-color:var(--warn); }
+  .target-btn.queued { background:#2a3142; }
+  .log { background:#15181d; border:1px solid var(--line); border-radius:6px; padding:8px; max-height:160px; overflow:auto; font-family:ui-monospace,Consolas,monospace; font-size:12px; }
+  .log div { padding:1px 0; }
+  .log .elim { color:var(--bad); }
+  .log .win { color:var(--good); }
+  .log .info { color:var(--dim); }
+  .reveal-row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:6px 0; padding:6px; background:#181b20; border-radius:6px; }
+  .reveal-row .name { width:140px; font-weight:600; }
+  .reveal-row .score { margin-left:auto; font-weight:700; font-size:18px; }
+  .reveal-row.lowest { border-left:4px solid var(--bad); }
+  .reveal-row.highest-zero { border-right:4px solid var(--warn); }
+  .overlay { position:fixed; inset:0; background:rgba(0,0,0,0.85); display:flex; align-items:center; justify-content:center; z-index:100; }
+  .overlay-box { background:var(--panel); border:1px solid var(--accent); border-radius:10px; padding:24px; max-width:420px; text-align:center; }
+  .badge { display:inline-block; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:600; margin-left:4px; }
+  .badge.ai { background:#5aa9ff33; color:#5aa9ff; }
+  .badge.elim { background:#ff6b6b33; color:#ff6b6b; }
+  .badge.die { background:#ffb45433; color:#ffb454; }
+  .small { font-size:12px; color:var(--dim); }
+  .scoreboard { display:flex; gap:6px; flex-wrap:wrap; }
+  .pip { display:inline-block; width:14px; height:14px; border-radius:50%; background:#3a414d; margin:1px; }
+  .pip.on { background:var(--warn); }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   POPULARITY CONTEST — Engine + UI (single file)
+   Rules: hand of {+2,+1,0,-1,-2}; each round players secretly
+   give up to 3 cards to any non-eliminated player (incl. self).
+   Reveal -> sum = popularity. Lowest eliminated (ties = safety).
+   A 0 received eliminates highest if 3+ players remain.
+   Gather: kept cards go to hand; eliminated players draw 1
+   random from their stack each round to play.
+   ============================================================ */
+
+// --- Seeded RNG (mulberry32) - keeps games reproducible -----
+function makeRng(seed) {
+  let s = seed >>> 0;
+  return function() {
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function shuffle(arr, rng) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function pick(arr, rng) { return arr[Math.floor(rng() * arr.length)]; }
+
+// --- Card constructors --------------------------------------
+let CARD_ID = 0;
+function mkCard(value) { return { id: ++CARD_ID, value }; }
+function startingHand() { return [mkCard(2), mkCard(1), mkCard(0), mkCard(-1), mkCard(-2)]; }
+function cardLabel(v) { return v > 0 ? "+" + v : "" + v; }
+function cardClass(v) {
+  if (v === 0) return "zero";
+  if (v === 1) return "pos1";
+  if (v === 2) return "pos2";
+  if (v === -1) return "neg1";
+  return "neg2";
+}
+
+// --- Engine: pure functions over GameState ------------------
+function newGame(opts) {
+  const seed = opts.seed >>> 0;
+  const rng = makeRng(seed);
+  const players = opts.players.map((p, i) => ({
+    id: i,
+    name: p.name,
+    isAI: p.isAI,
+    aiLevel: p.aiLevel || "heuristic",
+    hand: startingHand(),
+    stack: [],         // pool eliminated players draw from
+    received: [],      // cards received this round (face-down to others)
+    eliminated: false,
+    diePips: opts.useDie ? 1 : null,
+  }));
+  return {
+    seed,
+    rngState: seed,        // we re-make rng per consumer using rngState
+    players,
+    round: 1,
+    phase: "popularity",   // popularity | evaluation | gather | gameover
+    pendingAssignments: {},// { fromPlayerId: [ {cardId, toPlayerId} ] }
+    currentSubmitter: 0,   // which player is currently entering their submission
+    revealData: null,      // populated at evaluation
+    log: ["Game start."],
+    useDie: !!opts.useDie,
+    dieTarget: 6,
+    winner: null,
+    gamesPlayed: 0,
+  };
+}
+
+function activePlayers(G) { return G.players.filter(p => !p.eliminated); }
+
+// Advance currentSubmitter to the next player who still needs to submit
+function nextSubmitter(G) {
+  for (let i = G.currentSubmitter + 1; i < G.players.length; i++) {
+    if (!G.pendingAssignments[i] && (!G.players[i].eliminated || G.players[i].stack.length > 0)) {
+      return i;
+    }
+  }
+  return -1;
+}
+function firstSubmitter(G) {
+  for (let i = 0; i < G.players.length; i++) {
+    if (!G.pendingAssignments[i] && (!G.players[i].eliminated || G.players[i].stack.length > 0)) return i;
+  }
+  return -1;
+}
+
+// Submit a player's assignments: list of {cardId, toPlayerId}
+function submitAssignments(G, fromId, assignments) {
+  const p = G.players[fromId];
+  // validate
+  if (G.pendingAssignments[fromId]) throw new Error("already submitted");
+  if (p.eliminated) {
+    // eliminated player: ignore assignments param, auto-pick 1 from stack at random
+    if (p.stack.length === 0) {
+      G.pendingAssignments[fromId] = [];
+    } else {
+      const rng = makeRng(G.rngState ^ (G.round * 7919) ^ (fromId * 31));
+      G.rngState = (G.rngState + 1) >>> 0;
+      const idx = Math.floor(rng() * p.stack.length);
+      const card = p.stack.splice(idx, 1)[0];
+      // randomly: play on an active player, or return to own stack
+      const targets = activePlayers(G);
+      if (targets.length === 0 || rng() < 0.25) {
+        p.stack.push(card);
+        G.pendingAssignments[fromId] = [];
+        G.log.push(`(eliminated) ${p.name} kept a card in their stack.`);
+      } else {
+        const target = pick(targets, rng);
+        G.pendingAssignments[fromId] = [{ cardId: card.id, toPlayerId: target.id, card }];
+        G.log.push(`(eliminated) ${p.name} played a card on ${target.name}.`);
+      }
+    }
+  } else {
+    if (assignments.length > 3) throw new Error("max 3 cards");
+    const used = new Set();
+    for (const a of assignments) {
+      if (used.has(a.cardId)) throw new Error("duplicate card");
+      used.add(a.cardId);
+      const card = p.hand.find(c => c.id === a.cardId);
+      if (!card) throw new Error("card not in hand");
+      const target = G.players[a.toPlayerId];
+      if (!target || target.eliminated) throw new Error("invalid target");
+      a.card = card;
+    }
+    // remove from hand
+    p.hand = p.hand.filter(c => !used.has(c.id));
+    G.pendingAssignments[fromId] = assignments;
+  }
+  // advance
+  const next = nextSubmitter(G);
+  if (next === -1) {
+    enterEvaluation(G);
+  } else {
+    G.currentSubmitter = next;
+  }
+}
+
+function enterEvaluation(G) {
+  // distribute cards to recipients
+  for (const fromId in G.pendingAssignments) {
+    for (const a of G.pendingAssignments[fromId]) {
+      G.players[a.toPlayerId].received.push({ ...a.card, from: parseInt(fromId, 10) });
+    }
+  }
+  // compute scores
+  const active = activePlayers(G);
+  const rows = active.map(p => {
+    const score = p.received.reduce((s, c) => s + c.value, 0);
+    const gotZero = p.received.some(c => c.value === 0);
+    return { player: p, score, gotZero };
+  });
+  const scores = rows.map(r => r.score);
+  const lo = Math.min(...scores);
+  const hi = Math.max(...scores);
+  const lowestPlayers = rows.filter(r => r.score === lo);
+  const highestPlayers = rows.filter(r => r.score === hi);
+  const eliminated = [];
+  // Lowest: only if unique (safety in numbers)
+  if (lowestPlayers.length === 1 && active.length > 1) {
+    eliminated.push({ player: lowestPlayers[0].player, reason: "lowest popularity" });
+  }
+  // Zero elimination: highest player with 0 received, only if 3+ players, and unique
+  if (active.length >= 3) {
+    const candidates = highestPlayers.filter(r => r.gotZero && !eliminated.find(e => e.player.id === r.player.id));
+    if (candidates.length === 1 && lowestPlayers[0] !== candidates[0]) {
+      eliminated.push({ player: candidates[0].player, reason: "received a 0 while most popular" });
+    }
+  }
+  G.revealData = { rows, lo, hi, eliminated, lowestPlayers, highestPlayers };
+  G.phase = "evaluation";
+  for (const r of rows) {
+    G.log.push(`${r.player.name}: ${r.score >= 0 ? "+" : ""}${r.score}`);
+  }
+  for (const e of eliminated) {
+    G.log.push({ text: `*** ${e.player.name} eliminated (${e.reason}) ***`, cls: "elim" });
+  }
+}
+
+function enterGather(G) {
+  // Mark newly eliminated and move their hands into their stacks
+  const newlyElim = G.revealData.eliminated.map(e => e.player.id);
+  for (const p of G.players) {
+    if (newlyElim.includes(p.id)) {
+      p.eliminated = true;
+      // remaining hand + received -> stack
+      p.stack.push(...p.hand, ...p.received);
+      p.hand = [];
+      p.received = [];
+    } else if (!p.eliminated) {
+      // received cards -> hand
+      p.hand.push(...p.received);
+      p.received = [];
+    } else {
+      // already eliminated: any received cards go into stack (rare but possible if engine ever allowed)
+      p.stack.push(...p.received);
+      p.received = [];
+    }
+  }
+  G.pendingAssignments = {};
+  G.revealData = null;
+  // Win check
+  const remaining = activePlayers(G);
+  if (remaining.length <= 1) {
+    G.phase = "gameover";
+    G.winner = remaining[0] || null;
+    if (G.winner) {
+      G.log.push({ text: `🏆 ${G.winner.name} wins the game!`, cls: "win" });
+      if (G.useDie) {
+        G.winner.diePips = Math.min(G.dieTarget, (G.winner.diePips || 1) + 1);
+        if (G.winner.diePips >= G.dieTarget) {
+          G.log.push({ text: `🏆🏆 ${G.winner.name} reaches ${G.dieTarget} pips — match winner!`, cls: "win" });
+        }
+      }
+    }
+    return;
+  }
+  if (remaining.length === 2) {
+    G.log.push({ text: "Two players remain — highest popularity next round wins!", cls: "info" });
+  }
+  G.round++;
+  G.phase = "popularity";
+  G.currentSubmitter = firstSubmitter(G);
+  G.log.push({ text: `— Round ${G.round} —`, cls: "info" });
+}
+
+function resetForNextMatch(G) {
+  // For die variant: keep diePips, reset hands
+  for (const p of G.players) {
+    p.hand = startingHand();
+    p.stack = [];
+    p.received = [];
+    p.eliminated = false;
+  }
+  G.round = 1;
+  G.phase = "popularity";
+  G.pendingAssignments = {};
+  G.revealData = null;
+  G.winner = null;
+  G.currentSubmitter = 0;
+  G.gamesPlayed++;
+  G.log.push({ text: `=== Game ${G.gamesPlayed + 1} ===`, cls: "info" });
+}
+
+// --- AI controller (heuristic) ------------------------------
+function aiChoose(G, fromId) {
+  const p = G.players[fromId];
+  const rng = makeRng(G.rngState ^ (G.round * 1009) ^ (fromId * 17));
+  G.rngState = (G.rngState + 1) >>> 0;
+  const opponents = activePlayers(G).filter(o => o.id !== fromId);
+  const me = p;
+  // Threat = total card count + (winning condition proximity)
+  const threatOf = (op) => op.hand.length + op.stack.length * 0.5;
+  const sorted = opponents.slice().sort((a, b) => threatOf(b) - threatOf(a));
+  const leader = sorted[0]; // strongest opponent
+  const weakest = sorted[sorted.length - 1];
+  const myCount = me.hand.length;
+  const avgCount = opponents.length ? opponents.reduce((s, o) => s + o.hand.length, 0) / opponents.length : myCount;
+
+  const handByValue = {};
+  for (const c of me.hand) (handByValue[c.value] ||= []).push(c);
+  const take = (v) => (handByValue[v] && handByValue[v].length) ? handByValue[v].shift() : null;
+
+  const picks = [];
+  const activeCount = opponents.length + 1;
+
+  // Strategy: in a 2-player endgame, highest popularity wins — go big on self/negative on opp
+  if (activeCount === 2) {
+    const opp = opponents[0];
+    const plays = [
+      { c: take(2), to: me },     // +2 self
+      { c: take(1), to: me },     // +1 self
+      { c: take(-2), to: opp },   // -2 opp
+      { c: take(-1), to: opp },
+      { c: take(0), to: opp },    // 0 doesn't eliminate at 2p, but still hurts score
+    ].filter(x => x.c);
+    for (const pl of plays) { if (picks.length < 3) picks.push({ cardId: pl.c.id, toPlayerId: pl.to.id }); }
+  } else {
+    // 3+ players: avoid being lowest; try to eliminate leader with 0
+    const candidates = [];
+    // Negatives -> leader
+    if (handByValue[-2] && handByValue[-2].length) candidates.push({ c: take(-2), to: leader, prio: 9 });
+    // Zero -> leader (eliminates highest if unique)
+    if (handByValue[0] && handByValue[0].length) candidates.push({ c: take(0), to: leader, prio: 8 });
+    // -1 -> 2nd strongest (or leader if no 2nd)
+    if (handByValue[-1] && handByValue[-1].length) {
+      const tgt = sorted[1] || leader;
+      candidates.push({ c: take(-1), to: tgt, prio: 7 });
+    }
+    // Self-preservation: +2 self if I might be lowest
+    const fearLowest = myCount <= avgCount;
+    if (handByValue[2] && handByValue[2].length) {
+      candidates.push({ c: take(2), to: fearLowest ? me : weakest, prio: 6 });
+    }
+    if (handByValue[1] && handByValue[1].length) {
+      candidates.push({ c: take(1), to: fearLowest ? me : weakest, prio: 5 });
+    }
+    candidates.sort((a, b) => b.prio - a.prio);
+    for (const c of candidates) {
+      if (picks.length >= 3) break;
+      picks.push({ cardId: c.c.id, toPlayerId: c.to.id });
+    }
+  }
+  // If somehow zero picks (empty hand), submit empty
+  return picks;
+}
+
+// ============================================================
+// UI Layer (vanilla JS, observes engine state)
+// ============================================================
+let G = null;
+let UI = {
+  selectedCardId: null,   // for human submission
+  draft: [],              // [{cardId, toPlayerId}]
+  passOverlay: null,      // shows "Pass device to X" between humans
+  showReveal: false,
+};
+
+const $ = (sel) => document.querySelector(sel);
+const el = (tag, attrs, ...kids) => {
+  const e = document.createElement(tag);
+  if (attrs) for (const k in attrs) {
+    if (k === "class") e.className = attrs[k];
+    else if (k === "html") e.innerHTML = attrs[k];
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), attrs[k]);
+    else if (attrs[k] !== false && attrs[k] != null) e.setAttribute(k, attrs[k]);
+  }
+  for (const k of kids) {
+    if (k == null || k === false) continue;
+    if (Array.isArray(k)) k.forEach(x => x && e.appendChild(typeof x === "string" ? document.createTextNode(x) : x));
+    else e.appendChild(typeof k === "string" ? document.createTextNode(k) : k);
+  }
+  return e;
+};
+
+function render() {
+  const root = $("#app");
+  root.innerHTML = "";
+  if (!G) { root.appendChild(renderSetup()); return; }
+  root.appendChild(renderHeader());
+  if (G.phase === "gameover") {
+    root.appendChild(renderGameOver());
+  } else if (G.phase === "evaluation") {
+    root.appendChild(renderEvaluation());
+  } else {
+    root.appendChild(renderPlayers());
+    root.appendChild(renderCurrentTurn());
+  }
+  root.appendChild(renderLog());
+  if (UI.passOverlay) root.appendChild(renderPassOverlay());
+}
+
+function renderSetup() {
+  const wrap = el("div", { class: "panel" });
+  wrap.appendChild(el("h1", null, "Popularity Contest"));
+  wrap.appendChild(el("p", { class: "small" },
+    "A bluffing/elimination card game by Thomas Sidener. 3+ players. Be the last one standing — or in 2-player endgame, score highest."));
+  wrap.appendChild(el("p", null,
+    el("a", { href: "./online.html", style: "color:var(--accent)" }, "→ Play online with friends (multiplayer)")));
+
+  const playerCount = el("select", { id: "pcount" });
+  for (let i = 3; i <= 8; i++) {
+    const o = el("option", { value: i }, "" + i);
+    if (i === 4) o.selected = true;
+    playerCount.appendChild(o);
+  }
+
+  const useDie = el("input", { type: "checkbox", id: "usedie", checked: "checked" });
+  const dieRow = el("label", { class: "row" }, useDie, " Use die — first to 6 pips wins the match (designer's standard; uncheck for single-game)");
+
+  const seedInput = el("input", { type: "number", id: "seed", value: Math.floor(Math.random() * 1e9) });
+
+  const playersDiv = el("div", { id: "pconfig", class: "players-grid" });
+  function rebuildConfig() {
+    playersDiv.innerHTML = "";
+    const n = parseInt(playerCount.value, 10);
+    for (let i = 0; i < n; i++) {
+      const nameI = el("input", { type: "text", value: defaultName(i), id: "n" + i });
+      const aiSel = el("select", { id: "ai" + i });
+      aiSel.appendChild(el("option", { value: "human" }, "Human"));
+      aiSel.appendChild(el("option", { value: "ai" }, "AI"));
+      aiSel.value = i === 0 ? "human" : "ai";
+      playersDiv.appendChild(el("div", { class: "player-card" },
+        el("div", null, el("strong", null, "Seat " + (i + 1))),
+        el("div", null, nameI),
+        el("div", null, aiSel)));
+    }
+  }
+  playerCount.addEventListener("change", rebuildConfig);
+  rebuildConfig();
+
+  const start = el("button", { class: "primary", onclick: () => {
+    const n = parseInt(playerCount.value, 10);
+    const players = [];
+    for (let i = 0; i < n; i++) {
+      players.push({
+        name: $("#n" + i).value || defaultName(i),
+        isAI: $("#ai" + i).value === "ai",
+      });
+    }
+    G = newGame({ players, seed: parseInt(seedInput.value, 10) || 1, useDie: useDie.checked });
+    UI = { selectedCardId: null, draft: [], passOverlay: null, showReveal: false };
+    G.currentSubmitter = firstSubmitter(G);
+    queuePassThenTurn();
+  } }, "Start Game");
+
+  wrap.appendChild(el("h2", null, "Setup"));
+  wrap.appendChild(el("div", { class: "row" },
+    el("label", null, "Players: ", playerCount),
+    el("label", null, "Seed: ", seedInput),
+    dieRow));
+  wrap.appendChild(playersDiv);
+  wrap.appendChild(el("div", { class: "row" }, start));
+
+  wrap.appendChild(el("h2", null, "How to Play"));
+  wrap.appendChild(el("div", { class: "small", html: `
+    <p>Each player starts with cards <b>+2, +1, 0, -1, -2</b>.</p>
+    <ol>
+      <li><b>Popularity Phase:</b> Each player secretly gives up to 3 cards to any players (including themselves).</li>
+      <li><b>Evaluation:</b> Cards revealed. Sum = popularity. <b>Lowest is eliminated</b> (unique lows only — ties = safety in numbers). If 3+ players remain, the unique highest player who received a <b>0</b> is also eliminated.</li>
+      <li><b>Gather:</b> Keep your received cards. Eliminated players' cards become a "stack" they draw 1 randomly from each round.</li>
+    </ol>
+    <p>Last player standing wins. With 2 left, highest popularity wins the next round.</p>` }));
+  return wrap;
+}
+
+function defaultName(i) { return ["You", "Alice", "Bob", "Carol", "Dave", "Eve", "Frank", "Grace"][i]; }
+
+function renderHeader() {
+  return el("div", { class: "panel row" },
+    el("h1", { style: "margin:0" }, "Popularity Contest"),
+    el("div", { class: "small" }, ` · Round ${G.round} · Phase: ${G.phase}`),
+    el("button", { onclick: () => { if (confirm("Restart from setup?")) { G = null; render(); } } }, "New Game"));
+}
+
+function renderPlayers() {
+  const wrap = el("div", { class: "panel" });
+  wrap.appendChild(el("h2", null, "Players"));
+  const grid = el("div", { class: "players-grid" });
+  for (const p of G.players) {
+    const isCurrent = G.currentSubmitter === p.id && !G.pendingAssignments[p.id];
+    const sub = G.pendingAssignments[p.id];
+    grid.appendChild(el("div", { class: "player-card" + (p.eliminated ? " elim" : "") + (isCurrent ? " active" : "") },
+      el("div", null,
+        el("span", { class: "pname" }, p.name),
+        p.isAI && el("span", { class: "badge ai" }, "AI"),
+        p.eliminated && el("span", { class: "badge elim" }, "OUT"),
+        G.useDie && p.diePips != null && el("span", { class: "badge die" }, `${p.diePips}/${G.dieTarget}`)),
+      el("div", { class: "small" },
+        p.eliminated
+          ? `stack: ${p.stack.length} card${p.stack.length === 1 ? "" : "s"}`
+          : `hand: ${p.hand.length} · received face-down: ${p.received.length}`),
+      sub && el("div", { class: "small", style: "color:var(--good)" }, `✓ submitted ${sub.length} card${sub.length === 1 ? "" : "s"}`)));
+  }
+  wrap.appendChild(grid);
+  return wrap;
+}
+
+function renderCurrentTurn() {
+  const p = G.players[G.currentSubmitter];
+  if (!p) return el("div");
+  const wrap = el("div", { class: "panel" });
+  wrap.appendChild(el("h2", null, `${p.name}'s turn — choose cards to give`));
+
+  if (p.isAI || (p.eliminated && p.stack.length > 0)) {
+    wrap.appendChild(el("div", null, el("button", { class: "primary", onclick: doAITurn }, p.eliminated ? "Resolve eliminated draw" : `Run ${p.name}'s AI move`)));
+    return wrap;
+  }
+  if (p.eliminated && p.stack.length === 0) {
+    // skip
+    setTimeout(() => { submitAssignments(G, p.id, []); afterSubmit(); }, 0);
+    return wrap;
+  }
+
+  // Human UI
+  wrap.appendChild(el("div", { class: "small" },
+    `Pick up to 3 cards from your hand, then click a target for each. You may give to yourself.`));
+
+  // Draft display
+  const draftRow = el("div", { class: "row", style: "min-height:90px; margin-top:6px" });
+  draftRow.appendChild(el("strong", null, "Queued: "));
+  if (UI.draft.length === 0) draftRow.appendChild(el("span", { class: "small" }, "(none)"));
+  for (const d of UI.draft) {
+    const card = p.hand.find(c => c.id === d.cardId);
+    const tgt = G.players[d.toPlayerId];
+    if (!card) continue;
+    draftRow.appendChild(el("div", { class: "row", style: "background:#181b20;padding:4px 6px;border-radius:6px" },
+      renderCard(card, { tiny: true, faceUp: true }),
+      el("span", null, " → " + tgt.name),
+      el("button", { onclick: () => { UI.draft = UI.draft.filter(x => x !== d); render(); } }, "✕")));
+  }
+  wrap.appendChild(draftRow);
+
+  // Hand display (only cards not already drafted)
+  const draftedIds = new Set(UI.draft.map(d => d.cardId));
+  const hand = el("div", { class: "hand" });
+  for (const c of p.hand) {
+    if (draftedIds.has(c.id)) continue;
+    const cardEl = renderCard(c, { faceUp: true, selected: UI.selectedCardId === c.id });
+    cardEl.addEventListener("click", () => {
+      UI.selectedCardId = (UI.selectedCardId === c.id) ? null : c.id;
+      render();
+    });
+    hand.appendChild(cardEl);
+  }
+  wrap.appendChild(el("div", { class: "small" }, "Your hand:"));
+  wrap.appendChild(hand);
+
+  // Target buttons (only enabled when a card is selected and draft has room)
+  if (UI.selectedCardId != null && UI.draft.length < 3) {
+    const tline = el("div", { class: "targets" });
+    tline.appendChild(el("span", { class: "small" }, "Give to:"));
+    for (const t of G.players) {
+      if (t.eliminated) continue;
+      tline.appendChild(el("button", {
+        class: "target-btn" + (t.id === p.id ? " self" : ""),
+        onclick: () => {
+          UI.draft.push({ cardId: UI.selectedCardId, toPlayerId: t.id });
+          UI.selectedCardId = null;
+          render();
+        },
+      }, t.name + (t.id === p.id ? " (self)" : "")));
+    }
+    wrap.appendChild(tline);
+  }
+
+  wrap.appendChild(el("div", { class: "row", style: "margin-top:10px" },
+    el("button", { class: "primary", disabled: UI.draft.length === 0 && p.hand.length > 0,
+      onclick: () => {
+        try {
+          submitAssignments(G, p.id, UI.draft);
+          UI.draft = []; UI.selectedCardId = null;
+          afterSubmit();
+        } catch (e) { alert(e.message); }
+      } }, `Submit ${UI.draft.length} card${UI.draft.length === 1 ? "" : "s"}`),
+    el("button", { onclick: () => { UI.draft = []; UI.selectedCardId = null; render(); } }, "Clear")));
+
+  return wrap;
+}
+
+function renderCard(c, opts = {}) {
+  const tiny = opts.tiny;
+  if (!opts.faceUp) {
+    return el("div", { class: "card back" + (tiny ? " tiny" : "") }, "?");
+  }
+  const lbl = cardLabel(c.value);
+  return el("div", {
+    class: "card " + cardClass(c.value) + (tiny ? " tiny" : "") + (opts.selected ? " selected" : ""),
+  }, c.value === 0 ? "0" : lbl);
+}
+
+function renderEvaluation() {
+  const wrap = el("div", { class: "panel" });
+  wrap.appendChild(el("h2", null, `Round ${G.round} Evaluation`));
+  const rd = G.revealData;
+  for (const row of rd.rows) {
+    const elimEntry = rd.eliminated.find(e => e.player.id === row.player.id);
+    const cls = [
+      "reveal-row",
+      rd.lowestPlayers.length === 1 && row === rd.lowestPlayers[0] ? "lowest" : "",
+      row.gotZero && row.score === rd.hi ? "highest-zero" : "",
+    ].join(" ");
+    const cardsRow = el("div", { class: "row" });
+    for (const c of row.player.received) {
+      cardsRow.appendChild(renderCard(c, { faceUp: true, tiny: true }));
+    }
+    if (row.player.received.length === 0) cardsRow.appendChild(el("span", { class: "small" }, "(no cards received)"));
+    wrap.appendChild(el("div", { class: cls },
+      el("span", { class: "name" }, row.player.name),
+      cardsRow,
+      el("span", { class: "score" }, (row.score >= 0 ? "+" : "") + row.score),
+      elimEntry && el("span", { class: "badge elim" }, "ELIMINATED")));
+  }
+  if (rd.eliminated.length === 0) {
+    wrap.appendChild(el("div", { class: "small", style: "color:var(--warn)" },
+      "No elimination this round (safety in numbers, or insufficient conditions)."));
+  }
+  wrap.appendChild(el("div", { class: "row", style: "margin-top:10px" },
+    el("button", { class: "primary", onclick: () => { enterGather(G); if (G.phase !== "gameover") queuePassThenTurn(); else render(); } }, "Continue to next round")));
+  return wrap;
+}
+
+function renderGameOver() {
+  const wrap = el("div", { class: "panel" });
+  wrap.appendChild(el("h2", null, "Game Over"));
+  if (G.winner) {
+    wrap.appendChild(el("div", null, el("strong", null, `🏆 Winner: ${G.winner.name}`)));
+    if (G.useDie) {
+      wrap.appendChild(el("div", { class: "row", style: "margin-top:8px" }, "Match progress: ",
+        ...G.players.map(p => el("div", { class: "player-card", style: "min-width:120px" },
+          el("div", null, p.name),
+          el("div", { class: "scoreboard" },
+            ...Array.from({ length: G.dieTarget }, (_, i) =>
+              el("span", { class: "pip" + (i < p.diePips ? " on" : "") })))))));
+      const matchWinner = G.players.find(p => p.diePips >= G.dieTarget);
+      if (matchWinner) {
+        wrap.appendChild(el("div", { style: "margin-top:8px" }, el("strong", null, `🏆 Match winner: ${matchWinner.name}!`)));
+      } else {
+        wrap.appendChild(el("div", { class: "row", style: "margin-top:8px" },
+          el("button", { class: "primary", onclick: () => { resetForNextMatch(G); queuePassThenTurn(); } }, "Play next game (keep die pips)")));
+      }
+    }
+  } else {
+    wrap.appendChild(el("div", null, "No winner (everyone eliminated)."));
+  }
+  wrap.appendChild(el("div", { class: "row", style: "margin-top:8px" },
+    el("button", { onclick: () => { G = null; render(); } }, "Setup new game")));
+  return wrap;
+}
+
+function renderLog() {
+  const wrap = el("div", { class: "panel" });
+  wrap.appendChild(el("h2", null, "Log"));
+  const log = el("div", { class: "log" });
+  const last = G.log.slice(-80);
+  for (const e of last) {
+    if (typeof e === "string") log.appendChild(el("div", null, e));
+    else log.appendChild(el("div", { class: e.cls || "" }, e.text));
+  }
+  wrap.appendChild(log);
+  setTimeout(() => { log.scrollTop = log.scrollHeight; }, 0);
+  return wrap;
+}
+
+function renderPassOverlay() {
+  const o = UI.passOverlay;
+  return el("div", { class: "overlay" },
+    el("div", { class: "overlay-box" },
+      el("h2", { style: "margin-top:0" }, o.title),
+      el("div", { class: "small", style: "margin-bottom:14px" }, o.subtitle || ""),
+      el("button", { class: "primary", onclick: () => {
+        UI.passOverlay = null;
+        if (o.then) o.then();
+        else render();
+      } }, o.button || "Ready")));
+}
+
+// --- Turn flow controllers ----------------------------------
+function queuePassThenTurn() {
+  // If next submitter is a human, show pass screen first (only meaningful with multiple humans)
+  const idx = G.currentSubmitter;
+  if (idx === -1) { render(); return; }
+  const p = G.players[idx];
+  const humanCount = G.players.filter(x => x.isAI === false).length;
+  if (!p.isAI && humanCount > 1 && (!p.eliminated || p.stack.length > 0)) {
+    UI.passOverlay = {
+      title: `Pass device to ${p.name}`,
+      subtitle: "Hidden hand — only you should see this.",
+      button: `I'm ${p.name}, ready`,
+      then: () => render(),
+    };
+  }
+  render();
+}
+
+function afterSubmit() {
+  if (G.phase === "evaluation") { render(); return; }
+  // chain into next submitter (which may be AI — auto-run)
+  const next = G.players[G.currentSubmitter];
+  if (next && next.isAI) {
+    setTimeout(doAITurn, 350);
+    render();
+    return;
+  }
+  queuePassThenTurn();
+}
+
+function doAITurn() {
+  const p = G.players[G.currentSubmitter];
+  if (!p) return;
+  if (p.eliminated) {
+    submitAssignments(G, p.id, []);
+  } else {
+    const picks = aiChoose(G, p.id);
+    submitAssignments(G, p.id, picks);
+    G.log.push({ text: `${p.name} (AI) submitted ${picks.length} card${picks.length === 1 ? "" : "s"}.`, cls: "info" });
+  }
+  if (G.phase === "evaluation") render();
+  else {
+    const next = G.players[G.currentSubmitter];
+    if (next && next.isAI) setTimeout(doAITurn, 350);
+    else queuePassThenTurn();
+  }
+}
+
+// Initial render
+render();
+</script>
+</body>
+</html>

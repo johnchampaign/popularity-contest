@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Popularity Contest — Online</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  :root {
+    --bg:#1c1f24; --panel:#262b33; --panel2:#2f353f; --line:#3a414d;
+    --text:#e6e9ef; --dim:#8a93a3; --accent:#5aa9ff; --warn:#ffb454; --bad:#ff6b6b; --good:#7bd88f;
+  }
+  * { box-sizing: border-box; }
+  html,body { margin:0; padding:0; height:100%; background:var(--bg); color:var(--text); font:14px/1.4 system-ui, sans-serif; }
+  #app { max-width:1100px; margin:0 auto; padding:16px; }
+  h1 { margin:0 0 8px; font-size:22px; }
+  h2 { margin:18px 0 8px; font-size:16px; color:var(--accent); }
+  button { background:var(--panel2); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px 12px; cursor:pointer; font:inherit; }
+  button:hover:not(:disabled) { background:#3a414d; }
+  button:disabled { opacity:0.4; cursor:not-allowed; }
+  button.primary { background:var(--accent); color:#0a1018; border-color:var(--accent); font-weight:600; }
+  button.danger { background:var(--bad); color:#1a0606; border-color:var(--bad); }
+  input, select { background:var(--panel2); color:var(--text); border:1px solid var(--line); border-radius:4px; padding:4px 8px; font:inherit; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; margin-bottom:12px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .players-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:8px; }
+  .player-card { background:var(--panel2); border:1px solid var(--line); border-radius:6px; padding:8px; }
+  .player-card.elim { opacity:0.5; }
+  .player-card.active { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+  .player-card.you { outline:2px solid var(--warn); }
+  .pname { font-weight:600; }
+  .card { display:inline-flex; flex-direction:column; align-items:center; justify-content:center;
+    width:54px; height:78px; border-radius:6px; border:2px solid #000; background:#fff; color:#000;
+    font-weight:900; font-size:24px; margin:3px; cursor:pointer; user-select:none;
+    box-shadow:0 2px 4px rgba(0,0,0,0.4); }
+  .card.pos1, .card.pos2 { color:#2ea043; }
+  .card.zero { color:#1f6feb; font-size:30px; }
+  .card.neg1, .card.neg2 { color:#cf222e; }
+  .card.back { background:linear-gradient(135deg,#3a414d,#1c1f24); color:#5aa9ff; border-color:#5aa9ff; font-size:18px; }
+  .card.selected { transform:translateY(-8px); box-shadow:0 6px 8px rgba(90,169,255,0.6); border-color:var(--accent); }
+  .card.tiny { width:32px; height:46px; font-size:16px; margin:1px; }
+  .card.tiny.zero { font-size:18px; }
+  .hand { display:flex; flex-wrap:wrap; min-height:90px; padding:4px; background:#181b20; border-radius:6px; }
+  .targets { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  .target-btn { background:var(--panel); border:1px dashed var(--line); border-radius:6px; padding:6px 10px; cursor:pointer; }
+  .target-btn:hover { border-color:var(--accent); }
+  .target-btn.self { border-color:var(--warn); }
+  .log { background:#15181d; border:1px solid var(--line); border-radius:6px; padding:8px; max-height:160px; overflow:auto; font-family:ui-monospace,Consolas,monospace; font-size:12px; }
+  .log div { padding:1px 0; }
+  .log .elim { color:var(--bad); }
+  .log .win { color:var(--good); }
+  .log .info { color:var(--dim); }
+  .reveal-row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:6px 0; padding:6px; background:#181b20; border-radius:6px; }
+  .reveal-row .name { width:140px; font-weight:600; }
+  .reveal-row .score { margin-left:auto; font-weight:700; font-size:18px; }
+  .reveal-row.lowest { border-left:4px solid var(--bad); }
+  .reveal-row.highest-zero { border-right:4px solid var(--warn); }
+  .badge { display:inline-block; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:600; margin-left:4px; }
+  .badge.ai { background:#5aa9ff33; color:#5aa9ff; }
+  .badge.elim { background:#ff6b6b33; color:#ff6b6b; }
+  .badge.die { background:#ffb45433; color:#ffb454; }
+  .badge.host { background:#7bd88f33; color:#7bd88f; }
+  .badge.dc { background:#ff6b6b33; color:#ff6b6b; }
+  .small { font-size:12px; color:var(--dim); }
+  .pip { display:inline-block; width:14px; height:14px; border-radius:50%; background:#3a414d; margin:1px; }
+  .pip.on { background:var(--warn); }
+  .invite { background:#181b20; padding:8px; border-radius:6px; font-family:monospace; word-break:break-all; }
+  .status { font-size:12px; }
+  .status.ok { color:var(--good); }
+  .status.bad { color:var(--bad); }
+</style>
+</head>
+<body>
+<div id="app">Loading…</div>
+
+<script type="module">
+import * as E from "./engine.js";
+import PartySocket from "https://esm.sh/partysocket@1.0.2";
+
+// ---------- Configuration ----------
+// PartyKit host: set via ?host=... in URL, or via localStorage, or default below.
+const params = new URLSearchParams(location.search);
+const DEFAULT_HOST = "popularity-contest.johnchampaign.partykit.dev";
+const HOST = params.get("host") || localStorage.getItem("pc_host") || DEFAULT_HOST;
+if (params.get("host")) localStorage.setItem("pc_host", params.get("host"));
+
+const roomId = params.get("room") || (() => {
+  // generate a short readable code
+  const words = ["red","blue","gold","sage","moss","lake","star","wind","fox","oak","rune","tide"];
+  return words[Math.floor(Math.random()*words.length)] + "-" + words[Math.floor(Math.random()*words.length)] + "-" + Math.floor(Math.random()*99);
+})();
+if (!params.get("room")) {
+  // reflect into URL so it's shareable
+  const u = new URL(location.href); u.searchParams.set("room", roomId); history.replaceState(null,"",u);
+}
+
+let socket = null;
+let serverState = null;   // last received {type:'state',...}
+let connStatus = "connecting";
+let lastError = "";
+
+// UI local state (per-client, not synced)
+let UI = {
+  selectedCardId: null,
+  draft: [],   // [{cardId, toPlayerId}]
+  name: localStorage.getItem("pc_name") || "",
+};
+
+// ---------- Connect ----------
+function connect() {
+  socket = new PartySocket({
+    host: HOST,
+    room: roomId,
+    party: "popularity",
+  });
+  socket.addEventListener("open", () => { connStatus = "open"; render(); });
+  socket.addEventListener("close", () => { connStatus = "closed"; render(); });
+  socket.addEventListener("error", () => { connStatus = "error"; render(); });
+  socket.addEventListener("message", (ev) => {
+    let msg; try { msg = JSON.parse(ev.data); } catch { return; }
+    if (msg.type === "state") {
+      serverState = msg;
+      // Reset draft if it's no longer my turn or cards have changed
+      const myTurn = serverState.G && serverState.youSeat === serverState.G.currentSubmitter && serverState.G.phase === "popularity";
+      if (!myTurn) { UI.draft = []; UI.selectedCardId = null; }
+      render();
+    } else if (msg.type === "error") {
+      lastError = msg.msg;
+      setTimeout(() => { lastError = ""; render(); }, 4000);
+      render();
+    }
+  });
+}
+function send(obj) { socket?.send(JSON.stringify(obj)); }
+
+// ---------- Render ----------
+const $ = (sel) => document.querySelector(sel);
+const el = (tag, attrs, ...kids) => {
+  const e = document.createElement(tag);
+  if (attrs) for (const k in attrs) {
+    if (k === "class") e.className = attrs[k];
+    else if (k === "html") e.innerHTML = attrs[k];
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), attrs[k]);
+    else if (attrs[k] !== false && attrs[k] != null) e.setAttribute(k, attrs[k]);
+  }
+  for (const k of kids) {
+    if (k == null || k === false) continue;
+    if (Array.isArray(k)) k.forEach(x => x && e.appendChild(typeof x === "string" ? document.createTextNode(x) : x));
+    else e.appendChild(typeof k === "string" ? document.createTextNode(k) : k);
+  }
+  return e;
+};
+
+function render() {
+  const root = $("#app");
+  root.innerHTML = "";
+  root.appendChild(renderHeader());
+  if (lastError) root.appendChild(el("div", { class: "panel", style: "border-color:var(--bad);color:var(--bad)" }, "⚠ " + lastError));
+  if (!serverState) {
+    root.appendChild(el("div", { class: "panel" }, "Waiting for server…"));
+    return;
+  }
+  if (!serverState.started) {
+    root.appendChild(renderLobby());
+  } else {
+    root.appendChild(renderGame());
+  }
+  if (serverState.G?.log) root.appendChild(renderLog(serverState.G.log));
+}
+
+function renderHeader() {
+  const c = connStatus === "open" ? "ok" : "bad";
+  return el("div", { class: "panel row" },
+    el("h1", { style: "margin:0" }, "Popularity Contest"),
+    el("span", { class: "small" }, " · Room: "),
+    el("code", null, roomId),
+    el("button", {
+      onclick: () => navigator.clipboard?.writeText(location.href).then(() => { lastError = "Invite link copied!"; render(); setTimeout(() => { lastError=""; render(); }, 1500); })
+    }, "Copy invite link"),
+    el("span", { class: "status " + c }, " · " + connStatus),
+    el("a", { href: "./", style: "margin-left:auto;color:var(--accent)" }, "← Solo mode"));
+}
+
+function renderLobby() {
+  const wrap = el("div", { class: "panel" });
+  wrap.appendChild(el("h2", null, "Lobby"));
+  const mySeat = serverState.youSeat != null ? serverState.seats.find(s => s.id === serverState.youSeat) : null;
+  if (!mySeat) {
+    const nameI = el("input", { type: "text", value: UI.name, placeholder: "Your name", id: "joinname" });
+    wrap.appendChild(el("div", { class: "row" }, "Join as: ", nameI,
+      el("button", { class: "primary", onclick: () => {
+        const v = nameI.value.trim() || "Player";
+        UI.name = v; localStorage.setItem("pc_name", v);
+        send({ type: "join", name: v });
+      } }, "Join room")));
+  } else {
+    wrap.appendChild(el("div", { class: "small" },
+      `You are ${mySeat.name} (seat ${mySeat.id + 1})`,
+      serverState.youAreHost ? el("span", { class: "badge host" }, "HOST") : ""));
+  }
+
+  wrap.appendChild(el("h2", null, "Seats"));
+  const grid = el("div", { class: "players-grid" });
+  for (const s of serverState.seats) {
+    grid.appendChild(el("div", { class: "player-card" + (s.id === serverState.youSeat ? " you" : "") },
+      el("div", null,
+        el("span", { class: "pname" }, s.name),
+        s.isAI && el("span", { class: "badge ai" }, "AI"),
+        !s.isAI && !s.connected && el("span", { class: "badge dc" }, "disconnected")),
+      serverState.youAreHost && el("button", {
+        style: "margin-top:4px", onclick: () => send({ type: "kick", seatId: s.id }),
+      }, "Kick")));
+  }
+  if (serverState.seats.length < 3) {
+    grid.appendChild(el("div", { class: "player-card", style: "border-style:dashed" }, el("span", { class: "small" }, "Waiting for more players…")));
+  }
+  wrap.appendChild(grid);
+
+  if (serverState.youAreHost) {
+    wrap.appendChild(el("h2", null, "Host controls"));
+    wrap.appendChild(el("div", { class: "row" },
+      el("button", { onclick: () => send({ type: "add-ai", name: aiName(serverState.seats.length) }) }, "+ Add AI seat"),
+      el("label", { class: "row" },
+        el("input", { type: "checkbox", checked: serverState.config.useDie || false,
+          onchange: (e) => send({ type: "toggle-die", value: e.target.checked }) }),
+        " First to 6 pips wins match"),
+      el("button", {
+        class: "primary",
+        disabled: serverState.seats.length < 3,
+        onclick: () => send({ type: "start" }),
+      }, `Start game (${serverState.seats.length} player${serverState.seats.length === 1 ? "" : "s"})`)));
+    wrap.appendChild(el("div", { class: "small" }, "Need 3+ seats to start. Empty seats can be AI-filled."));
+  } else {
+    wrap.appendChild(el("div", { class: "small" }, "Waiting for host to start…"));
+  }
+
+  wrap.appendChild(el("h2", null, "Invite others"));
+  wrap.appendChild(el("div", { class: "invite" }, location.href));
+  return wrap;
+}
+
+function aiName(i) { return ["Alice","Bob","Carol","Dave","Eve","Frank","Grace","Heidi"][i] || ("AI " + (i + 1)); }
+
+function renderGame() {
+  const G = serverState.G;
+  if (!G) return el("div", { class: "panel" }, "No game state.");
+  const wrap = el("div");
+  wrap.appendChild(renderRoundHeader(G));
+  if (G.phase === "gameover") wrap.appendChild(renderGameOver(G));
+  else if (G.phase === "evaluation") wrap.appendChild(renderEvaluation(G));
+  else { wrap.appendChild(renderPlayers(G)); wrap.appendChild(renderTurn(G)); }
+  return wrap;
+}
+
+function renderRoundHeader(G) {
+  return el("div", { class: "panel row" },
+    el("strong", null, `Round ${G.round}`),
+    el("span", { class: "small" }, ` · Phase: ${G.phase}`),
+    G.useDie && el("span", { class: "small" }, ` · Game ${G.gamesPlayed + 1} (first to ${G.dieTarget} pips)`));
+}
+
+function renderPlayers(G) {
+  const wrap = el("div", { class: "panel" });
+  wrap.appendChild(el("h2", null, "Players"));
+  const grid = el("div", { class: "players-grid" });
+  for (const p of G.players) {
+    const isCurrent = G.currentSubmitter === p.id && !G.pendingAssignments[p.id];
+    const sub = G.pendingAssignments[p.id];
+    const isYou = p.id === serverState.youSeat;
+    grid.appendChild(el("div", { class: "player-card" + (p.eliminated ? " elim" : "") + (isCurrent ? " active" : "") + (isYou ? " you" : "") },
+      el("div", null,
+        el("span", { class: "pname" }, p.name),
+        isYou && el("span", { class: "badge host" }, "YOU"),
+        p.isAI && el("span", { class: "badge ai" }, "AI"),
+        p.eliminated && el("span", { class: "badge elim" }, "OUT"),
+        G.useDie && p.diePips != null && el("span", { class: "badge die" }, `${p.diePips}/${G.dieTarget}`)),
+      el("div", { class: "small" },
+        p.eliminated
+          ? `stack: ${p.stack.length} card${p.stack.length === 1 ? "" : "s"}`
+          : `hand: ${p.hand.length} · received: ${p.received.length}`),
+      sub && el("div", { class: "small", style: "color:var(--good)" }, `✓ submitted ${sub.length} card${sub.length === 1 ? "" : "s"}`)));
+  }
+  wrap.appendChild(grid);
+  return wrap;
+}
+
+function renderTurn(G) {
+  const wrap = el("div", { class: "panel" });
+  const cur = G.players[G.currentSubmitter];
+  if (!cur) return wrap;
+  const isMe = cur.id === serverState.youSeat;
+  if (!isMe) {
+    wrap.appendChild(el("h2", null, `Waiting for ${cur.name}…`));
+    return wrap;
+  }
+  wrap.appendChild(el("h2", null, "Your turn — give up to 3 cards"));
+  // Draft
+  const draftRow = el("div", { class: "row", style: "min-height:90px; margin-top:6px" });
+  draftRow.appendChild(el("strong", null, "Queued: "));
+  if (UI.draft.length === 0) draftRow.appendChild(el("span", { class: "small" }, "(none)"));
+  for (const d of UI.draft) {
+    const card = cur.hand.find(c => c.id === d.cardId);
+    const tgt = G.players[d.toPlayerId];
+    if (!card) continue;
+    draftRow.appendChild(el("div", { class: "row", style: "background:#181b20;padding:4px 6px;border-radius:6px" },
+      renderCard(card, { tiny: true, faceUp: true }),
+      el("span", null, " → " + tgt.name),
+      el("button", { onclick: () => { UI.draft = UI.draft.filter(x => x !== d); render(); } }, "✕")));
+  }
+  wrap.appendChild(draftRow);
+  // Hand
+  const draftedIds = new Set(UI.draft.map(d => d.cardId));
+  const hand = el("div", { class: "hand" });
+  for (const c of cur.hand) {
+    if (draftedIds.has(c.id)) continue;
+    const cardEl = renderCard(c, { faceUp: true, selected: UI.selectedCardId === c.id });
+    cardEl.addEventListener("click", () => {
+      UI.selectedCardId = UI.selectedCardId === c.id ? null : c.id;
+      render();
+    });
+    hand.appendChild(cardEl);
+  }
+  wrap.appendChild(el("div", { class: "small" }, "Your hand:"));
+  wrap.appendChild(hand);
+  // Target buttons
+  if (UI.selectedCardId != null && UI.draft.length < 3) {
+    const tline = el("div", { class: "targets" });
+    tline.appendChild(el("span", { class: "small" }, "Give to:"));
+    for (const t of G.players) {
+      if (t.eliminated) continue;
+      tline.appendChild(el("button", {
+        class: "target-btn" + (t.id === cur.id ? " self" : ""),
+        onclick: () => {
+          UI.draft.push({ cardId: UI.selectedCardId, toPlayerId: t.id });
+          UI.selectedCardId = null;
+          render();
+        },
+      }, t.name + (t.id === cur.id ? " (self)" : "")));
+    }
+    wrap.appendChild(tline);
+  }
+  wrap.appendChild(el("div", { class: "row", style: "margin-top:10px" },
+    el("button", { class: "primary",
+      disabled: UI.draft.length === 0 && cur.hand.length > 0,
+      onclick: () => { send({ type: "submit", assignments: UI.draft }); UI.draft = []; UI.selectedCardId = null; } },
+      `Submit ${UI.draft.length} card${UI.draft.length === 1 ? "" : "s"}`),
+    el("button", { onclick: () => { UI.draft = []; UI.selectedCardId = null; render(); } }, "Clear")));
+  return wrap;
+}
+
+function renderCard(c, opts = {}) {
+  const tiny = opts.tiny;
+  if (!opts.faceUp || c.hidden || c.value == null) {
+    return el("div", { class: "card back" + (tiny ? " tiny" : "") }, "?");
+  }
+  const lbl = E.cardLabel(c.value);
+  return el("div", {
+    class: "card " + E.cardClass(c.value) + (tiny ? " tiny" : "") + (opts.selected ? " selected" : ""),
+  }, c.value === 0 ? "0" : lbl);
+}
+
+function renderEvaluation(G) {
+  const wrap = el("div", { class: "panel" });
+  wrap.appendChild(el("h2", null, `Round ${G.round} Evaluation`));
+  const rd = G.revealData;
+  for (const row of rd.rows) {
+    const p = G.players[row.playerId];
+    const elimEntry = rd.eliminated.find(e => e.playerId === row.playerId);
+    const cardsRow = el("div", { class: "row" });
+    for (const c of p.received) cardsRow.appendChild(renderCard(c, { faceUp: true, tiny: true }));
+    if (p.received.length === 0) cardsRow.appendChild(el("span", { class: "small" }, "(no cards received)"));
+    wrap.appendChild(el("div", { class: "reveal-row" + (elimEntry ? " lowest" : "") },
+      el("span", { class: "name" }, p.name),
+      cardsRow,
+      el("span", { class: "score" }, (row.score >= 0 ? "+" : "") + row.score),
+      elimEntry && el("span", { class: "badge elim" }, "ELIMINATED")));
+  }
+  if (rd.eliminated.length === 0) {
+    wrap.appendChild(el("div", { class: "small", style: "color:var(--warn)" },
+      "No elimination this round (safety in numbers)."));
+  }
+  wrap.appendChild(el("div", { class: "row", style: "margin-top:10px" },
+    el("button", { class: "primary", onclick: () => send({ type: "continue" }) }, "Continue to next round")));
+  return wrap;
+}
+
+function renderGameOver(G) {
+  const wrap = el("div", { class: "panel" });
+  wrap.appendChild(el("h2", null, "Game Over"));
+  if (G.winner) wrap.appendChild(el("div", null, el("strong", null, `🏆 Winner: ${G.winner.name}`)));
+  if (G.useDie) {
+    wrap.appendChild(el("div", { class: "row", style: "margin-top:8px" }, "Match: ",
+      ...G.players.map(p => el("div", { class: "player-card", style: "min-width:120px" },
+        el("div", null, p.name),
+        el("div", null,
+          ...Array.from({ length: G.dieTarget }, (_, i) =>
+            el("span", { class: "pip" + (i < (p.diePips || 0) ? " on" : "") })))))));
+    const matchWinner = G.players.find(p => (p.diePips || 0) >= G.dieTarget);
+    if (matchWinner) {
+      wrap.appendChild(el("div", { style: "margin-top:8px" }, el("strong", null, `🏆🏆 Match winner: ${matchWinner.name}!`)));
+    } else if (serverState.youAreHost) {
+      wrap.appendChild(el("div", { class: "row", style: "margin-top:8px" },
+        el("button", { class: "primary", onclick: () => send({ type: "next-match" }) }, "Play next game (keep pips)")));
+    }
+  }
+  if (serverState.youAreHost) {
+    wrap.appendChild(el("div", { class: "row", style: "margin-top:8px" },
+      el("button", { onclick: () => send({ type: "reset" }) }, "Return to lobby")));
+  }
+  return wrap;
+}
+
+function renderLog(logArr) {
+  const wrap = el("div", { class: "panel" });
+  wrap.appendChild(el("h2", null, "Log"));
+  const log = el("div", { class: "log" });
+  for (const e of logArr.slice(-80)) {
+    if (typeof e === "string") log.appendChild(el("div", null, e));
+    else log.appendChild(el("div", { class: e.cls || "" }, e.text));
+  }
+  wrap.appendChild(log);
+  setTimeout(() => { log.scrollTop = log.scrollHeight; }, 0);
+  return wrap;
+}
+
+connect();
+render();
+</script>
+</body>
+</html>
