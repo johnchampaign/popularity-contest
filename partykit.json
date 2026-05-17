@@ -2,5 +2,8 @@
   "$schema": "https://www.partykit.io/schema.json",
   "name": "popularity-contest",
   "main": "party/popularity.ts",
+  "parties": {
+    "reports": "party/reports.ts"
+  },
   "compatibilityDate": "2025-01-01"
 }

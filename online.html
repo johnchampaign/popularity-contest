@@ -79,6 +79,7 @@
 <script type="module">
 import * as E from "./engine.js";
 import PartySocket from "https://esm.sh/partysocket@1.0.2";
+import { openReport } from "./report.js";
 
 // ---------- Configuration ----------
 // PartyKit host: set via ?host=... in URL, or via localStorage, or default below.
@@ -197,8 +198,12 @@ function renderHeader() {
       onclick: () => navigator.clipboard?.writeText(location.href).then(() => { lastError = "Invite link copied!"; render(); setTimeout(() => { lastError=""; render(); }, 1500); })
     }, "Copy invite link"),
     el("span", { class: "status " + c }, " · " + connStatus),
-    el("span", { class: "small", title: "client build" }, " · b4"),
-    el("a", { href: "./", style: "margin-left:auto;color:var(--accent)" }, "← Solo mode"));
+    el("span", { class: "small", title: "client build" }, " · b5"),
+    el("button", { style: "margin-left:auto", onclick: () => openReport({
+      getState: () => serverState,
+      getLog: () => (serverState?.G?.log || []).slice(-40).map(e => typeof e === "string" ? e : e.text),
+    }) }, "🐞 Report"),
+    el("a", { href: "./", style: "color:var(--accent)" }, "← Solo mode"));
 }
 
 function renderLobby() {

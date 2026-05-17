@@ -36,11 +36,10 @@ export default class PopularityServer implements Party.Server {
 
   onClose(conn: Party.Connection) {
     if (!this.started) {
+      // Pre-start: keep seat alive for reconnect-by-name (mobile backgrounding
+      // is common). Host can kick ghost seats from the lobby.
       const s = this.seats.find(s => s.connId === conn.id);
-      if (s) {
-        this.seats = this.seats.filter(x => x !== s);
-        this.seats.forEach((x, i) => x.id = i);
-      }
+      if (s) s.connId = null;
     } else {
       const s = this.seats.find(s => s.connId === conn.id);
       if (s) {

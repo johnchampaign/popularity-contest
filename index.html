@@ -72,8 +72,9 @@
 <body>
 <div id="app"></div>
 
-<script>
+<script type="module">
 "use strict";
+import { openReport } from "./report.js";
 
 /* ============================================================
    POPULARITY CONTEST — Engine + UI (single file)
@@ -514,6 +515,10 @@ function renderHeader() {
   return el("div", { class: "panel row" },
     el("h1", { style: "margin:0" }, "Popularity Contest"),
     el("div", { class: "small" }, ` · Round ${G.round} · Phase: ${G.phase}`),
+    el("button", { style: "margin-left:auto", onclick: () => openReport({
+      getState: () => G,
+      getLog: () => (G?.log || []).slice(-40).map(e => typeof e === "string" ? e : e.text),
+    }) }, "🐞 Report"),
     el("button", { onclick: () => { if (confirm("Restart from setup?")) { G = null; render(); } } }, "New Game"));
 }
 
