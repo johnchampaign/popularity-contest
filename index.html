@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Popularity Contest</title>
+<title>Tom Sidener's Popularity Contest</title>
 <style>
   :root {
     --bg:#1c1f24; --panel:#262b33; --panel2:#2f353f; --line:#3a414d;
@@ -437,9 +437,10 @@ function render() {
 
 function renderSetup() {
   const wrap = el("div", { class: "panel" });
-  wrap.appendChild(el("h1", null, "Popularity Contest"));
+  wrap.appendChild(el("h1", null, "Tom Sidener's Popularity Contest"));
   wrap.appendChild(el("p", { class: "small" },
-    "A bluffing/elimination card game by Thomas Sidener. 3+ players. Be the last one standing — or in 2-player endgame, score highest."));
+    "A bluffing/elimination card game. 3+ players. Be the last one standing — or in 2-player endgame, score highest. ",
+    el("a", { href: "https://www.thegamecrafter.com/games/popularity-contest1", target: "_blank", rel: "noopener", style: "color:var(--accent)" }, "Buy the physical game on The Game Crafter →")));
   wrap.appendChild(el("p", null,
     el("a", { href: "./online.html", style: "color:var(--accent)" }, "→ Play online with friends (multiplayer)")));
 
@@ -513,7 +514,9 @@ function defaultName(i) { return ["You", "Alice", "Bob", "Carol", "Dave", "Eve",
 
 function renderHeader() {
   return el("div", { class: "panel row" },
-    el("h1", { style: "margin:0" }, "Popularity Contest"),
+    el("h1", { style: "margin:0" },
+      el("a", { href: "https://www.thegamecrafter.com/games/popularity-contest1", target: "_blank", rel: "noopener", style: "color:inherit;text-decoration:none", title: "Buy the physical game on The Game Crafter" },
+        "Tom Sidener's Popularity Contest")),
     el("div", { class: "small" }, ` · Round ${G.round} · Phase: ${G.phase}`),
     el("button", { style: "margin-left:auto", onclick: () => openReport({
       getState: () => G,

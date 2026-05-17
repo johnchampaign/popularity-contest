@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>Popularity Contest — Online</title>
+<title>Tom Sidener's Popularity Contest — Online</title>
 <link rel="stylesheet" href="style.css">
 <style>
   :root {
@@ -191,7 +191,9 @@ function render() {
 function renderHeader() {
   const c = connStatus === "open" ? "ok" : "bad";
   return el("div", { class: "panel row" },
-    el("h1", { style: "margin:0" }, "Popularity Contest"),
+    el("h1", { style: "margin:0" },
+      el("a", { href: "https://www.thegamecrafter.com/games/popularity-contest1", target: "_blank", rel: "noopener", style: "color:inherit;text-decoration:none", title: "Buy the physical game on The Game Crafter" },
+        "Tom Sidener's Popularity Contest")),
     el("span", { class: "small" }, " · Room: "),
     el("code", null, roomId),
     el("button", {
