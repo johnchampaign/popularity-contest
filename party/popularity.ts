@@ -205,7 +205,6 @@ export default class PopularityServer implements Party.Server {
     if (!this.started) throw new Error("not started");
     const seat = this.seatForConn(sender.id);
     if (!seat) throw new Error("not seated");
-    if (this.G.currentSubmitter !== seat.id) throw new Error("not your turn");
     E.submitAssignments(this.G, seat.id, msg.assignments || []);
     this.runAutoAndBroadcast();
   }

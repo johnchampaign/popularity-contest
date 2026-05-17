@@ -198,7 +198,7 @@ function renderHeader() {
       onclick: () => navigator.clipboard?.writeText(location.href).then(() => { lastError = "Invite link copied!"; render(); setTimeout(() => { lastError=""; render(); }, 1500); })
     }, "Copy invite link"),
     el("span", { class: "status " + c }, " · " + connStatus),
-    el("span", { class: "small", title: "client build" }, " · b6"),
+    el("span", { class: "small", title: "client build" }, " · b7"),
     el("button", { style: "margin-left:auto", onclick: () => openReport({
       getState: () => serverState,
       getLog: () => (serverState?.G?.log || []).slice(-40).map(e => typeof e === "string" ? e : e.text),
@@ -321,20 +321,44 @@ function renderPlayers(G) {
 
 function renderTurn(G) {
   const wrap = el("div", { class: "panel" });
-  const cur = G.players[G.currentSubmitter];
-  if (!cur) return wrap;
-  const isMe = cur.id === serverState.youSeat;
-  if (!isMe) {
-    wrap.appendChild(el("h2", null, `Waiting for ${cur.name}…`));
+  const pendingNames = G.players
+    .filter(p => !G.pendingAssignments[p.id] && (!p.eliminated || p.stack.length > 0))
+    .map(p => p.name);
+
+  // Spectator view
+  if (serverState.youSeat == null) {
+    wrap.appendChild(el("h2", null, pendingNames.length
+      ? "Waiting on: " + pendingNames.join(", ")
+      : "All submitted — resolving…"));
     return wrap;
   }
-  wrap.appendChild(el("h2", null, "Your turn — give up to 3 cards"));
+
+  const myId = serverState.youSeat;
+  const me = G.players[myId];
+  const mySub = G.pendingAssignments[myId];
+
+  // Already submitted
+  if (mySub) {
+    wrap.appendChild(el("h2", null, "✓ Your cards are in"));
+    wrap.appendChild(el("div", { class: "small" }, pendingNames.length
+      ? "Still waiting on: " + pendingNames.join(", ")
+      : "Everyone submitted — resolving…"));
+    return wrap;
+  }
+
+  // Eliminated but stack non-empty — server's runAutoTurns should handle it
+  if (me?.eliminated) {
+    wrap.appendChild(el("h2", null, "(Drawing from your eliminated stack…)"));
+    return wrap;
+  }
+
+  wrap.appendChild(el("h2", null, "Give up to 3 cards (everyone plays at once)"));
   // Draft
   const draftRow = el("div", { class: "row", style: "min-height:90px; margin-top:6px" });
   draftRow.appendChild(el("strong", null, "Queued: "));
   if (UI.draft.length === 0) draftRow.appendChild(el("span", { class: "small" }, "(none)"));
   for (const d of UI.draft) {
-    const card = cur.hand.find(c => c.id === d.cardId);
+    const card = me.hand.find(c => c.id === d.cardId);
     const tgt = G.players[d.toPlayerId];
     if (!card) continue;
     draftRow.appendChild(el("div", { class: "row", style: "background:#181b20;padding:4px 6px;border-radius:6px" },
@@ -346,7 +370,7 @@ function renderTurn(G) {
   // Hand
   const draftedIds = new Set(UI.draft.map(d => d.cardId));
   const hand = el("div", { class: "hand" });
-  for (const c of cur.hand) {
+  for (const c of me.hand) {
     if (draftedIds.has(c.id)) continue;
     const cardEl = renderCard(c, { faceUp: true, selected: UI.selectedCardId === c.id });
     cardEl.addEventListener("click", () => {
@@ -364,19 +388,19 @@ function renderTurn(G) {
     for (const t of G.players) {
       if (t.eliminated) continue;
       tline.appendChild(el("button", {
-        class: "target-btn" + (t.id === cur.id ? " self" : ""),
+        class: "target-btn" + (t.id === me.id ? " self" : ""),
         onclick: () => {
           UI.draft.push({ cardId: UI.selectedCardId, toPlayerId: t.id });
           UI.selectedCardId = null;
           render();
         },
-      }, t.name + (t.id === cur.id ? " (self)" : "")));
+      }, t.name + (t.id === me.id ? " (self)" : "")));
     }
     wrap.appendChild(tline);
   }
   wrap.appendChild(el("div", { class: "row", style: "margin-top:10px" },
     el("button", { class: "primary",
-      disabled: UI.draft.length === 0 && cur.hand.length > 0,
+      disabled: UI.draft.length === 0 && me.hand.length > 0,
       onclick: () => { send({ type: "submit", assignments: UI.draft }); UI.draft = []; UI.selectedCardId = null; } },
       `Submit ${UI.draft.length} card${UI.draft.length === 1 ? "" : "s"}`),
     el("button", { onclick: () => { UI.draft = []; UI.selectedCardId = null; render(); } }, "Clear")));

@@ -85,7 +85,6 @@ export function submitAssignments(G, fromId, assignments) {
   const p = G.players[fromId];
   if (G.pendingAssignments[fromId]) throw new Error("already submitted");
   if (G.phase !== "popularity") throw new Error("not popularity phase");
-  if (G.currentSubmitter !== fromId) throw new Error("not your turn to submit");
   if (p.eliminated) {
     if (p.stack.length === 0) {
       G.pendingAssignments[fromId] = [];
@@ -122,9 +121,28 @@ export function submitAssignments(G, fromId, assignments) {
     p.hand = p.hand.filter(c => !used.has(c.id));
     G.pendingAssignments[fromId] = resolved;
   }
-  const next = nextSubmitter(G);
-  if (next === -1) enterEvaluation(G);
-  else G.currentSubmitter = next;
+  if (allSubmitted(G)) enterEvaluation(G);
+  else G.currentSubmitter = nextHumanToAct(G);
+}
+
+function allSubmitted(G) {
+  for (let i = 0; i < G.players.length; i++) {
+    if (G.pendingAssignments[i]) continue;
+    const p = G.players[i];
+    if (!p.eliminated || p.stack.length > 0) return false;
+  }
+  return true;
+}
+
+function nextHumanToAct(G) {
+  for (let i = 0; i < G.players.length; i++) {
+    if (G.pendingAssignments[i]) continue;
+    const p = G.players[i];
+    if (p.isAI) continue;
+    if (!p.eliminated || p.stack.length > 0) return i;
+  }
+  // Fall back to any unsubmitted (AIs handled by runAutoTurns)
+  return firstSubmitter(G);
 }
 
 export function enterEvaluation(G) {
@@ -290,14 +308,17 @@ export function viewFor(G, seatId) {
   return view;
 }
 
-// Advance the game past any AI-controlled or auto-resolving turns.
-// Returns true if it changed phase or made progress.
+// Submit on behalf of every eligible AI / eliminated player. In simultaneous
+// mode this happens all at once at the start of each popularity phase. Humans
+// can submit in any order; the phase auto-advances when all have submitted.
 export function runAutoTurns(G) {
+  if (!G || G.phase !== "popularity") return false;
   let progressed = false;
-  while (G && G.phase === "popularity") {
-    const p = G.players[G.currentSubmitter];
-    if (!p) break;
-    if (p.isAI) {
+  for (let i = 0; i < G.players.length; i++) {
+    if (G.phase !== "popularity") break;
+    if (G.pendingAssignments[i]) continue;
+    const p = G.players[i];
+    if (p.isAI && !p.eliminated) {
       const picks = aiChoose(G, p.id);
       submitAssignments(G, p.id, picks);
       G.log.push({ text: `${p.name} (AI) submitted ${picks.length} card${picks.length === 1 ? "" : "s"}.`, cls: "info" });
@@ -305,8 +326,6 @@ export function runAutoTurns(G) {
     } else if (p.eliminated) {
       submitAssignments(G, p.id, []);
       progressed = true;
-    } else {
-      break; // human's turn
     }
   }
   return progressed;
