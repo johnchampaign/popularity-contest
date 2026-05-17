@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>Popularity Contest — Online</title>
 <link rel="stylesheet" href="style.css">
 <style>
@@ -119,7 +122,17 @@ function connect() {
   socket.addEventListener("message", (ev) => {
     let msg; try { msg = JSON.parse(ev.data); } catch { return; }
     if (msg.type === "state") {
+      const firstState = !serverState;
       serverState = msg;
+      // Auto-join on first state if we have a name and game hasn't started
+      if (firstState && !serverState.started && serverState.youSeat == null) {
+        const savedName = UI.name || promptForName();
+        if (savedName) {
+          UI.name = savedName;
+          localStorage.setItem("pc_name", savedName);
+          send({ type: "join", name: savedName });
+        }
+      }
       // Reset draft if it's no longer my turn or cards have changed
       const myTurn = serverState.G && serverState.youSeat === serverState.G.currentSubmitter && serverState.G.phase === "popularity";
       if (!myTurn) { UI.draft = []; UI.selectedCardId = null; }
@@ -132,6 +145,11 @@ function connect() {
   });
 }
 function send(obj) { socket?.send(JSON.stringify(obj)); }
+
+function promptForName() {
+  const v = prompt("Enter your name for this game:", "Player " + Math.floor(Math.random() * 100));
+  return (v || "").trim().slice(0, 24) || null;
+}
 
 // ---------- Render ----------
 const $ = (sel) => document.querySelector(sel);
@@ -245,6 +263,16 @@ function renderGame() {
   const G = serverState.G;
   if (!G) return el("div", { class: "panel" }, "No game state.");
   const wrap = el("div");
+  // Spectator banner if no seat
+  if (serverState.youSeat == null) {
+    wrap.appendChild(el("div", { class: "panel", style: "background:#3a2a14;border-color:var(--warn)" },
+      el("strong", null, "👀 Spectator mode — "),
+      "You joined after the game started. You can watch but not play. The host can return to lobby from the Game Over screen."));
+  } else {
+    const mySeat = serverState.seats[serverState.youSeat];
+    wrap.appendChild(el("div", { class: "panel", style: "padding:6px 12px" },
+      el("strong", null, `You are: ${mySeat?.name || "?"} (seat ${serverState.youSeat + 1})`)));
+  }
   wrap.appendChild(renderRoundHeader(G));
   if (G.phase === "gameover") wrap.appendChild(renderGameOver(G));
   else if (G.phase === "evaluation") wrap.appendChild(renderEvaluation(G));
