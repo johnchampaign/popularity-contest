@@ -124,8 +124,9 @@ function connect() {
     if (msg.type === "state") {
       const firstState = !serverState;
       serverState = msg;
-      // Auto-join on first state if we have a name and game hasn't started
-      if (firstState && !serverState.started && serverState.youSeat == null) {
+      // Auto-join on first state. Server handles late-join (fresh hand)
+      // and rejoin-by-name (reclaim an orphaned seat).
+      if (firstState && serverState.youSeat == null) {
         const savedName = UI.name || promptForName();
         if (savedName) {
           UI.name = savedName;
@@ -196,6 +197,7 @@ function renderHeader() {
       onclick: () => navigator.clipboard?.writeText(location.href).then(() => { lastError = "Invite link copied!"; render(); setTimeout(() => { lastError=""; render(); }, 1500); })
     }, "Copy invite link"),
     el("span", { class: "status " + c }, " · " + connStatus),
+    el("span", { class: "small", title: "client build" }, " · b4"),
     el("a", { href: "./", style: "margin-left:auto;color:var(--accent)" }, "← Solo mode"));
 }
 

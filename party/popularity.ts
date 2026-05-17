@@ -36,25 +36,22 @@ export default class PopularityServer implements Party.Server {
 
   onClose(conn: Party.Connection) {
     if (!this.started) {
-      // pre-game: free the seat
       const s = this.seats.find(s => s.connId === conn.id);
       if (s) {
         this.seats = this.seats.filter(x => x !== s);
-        // renumber
         this.seats.forEach((x, i) => x.id = i);
       }
     } else {
-      // in-game: mark seat as disconnected but keep it (auto-AI fallback)
       const s = this.seats.find(s => s.connId === conn.id);
       if (s) {
         s.connId = null;
-        s.isAI = true; // takeover so game doesn't stall
+        s.isAI = true;
+        if (this.G?.players[s.id]) this.G.players[s.id].isAI = true;
         this.runAutoAndBroadcast();
         return;
       }
     }
     if (this.hostConnId === conn.id) {
-      // promote next connection as host
       const conns = [...this.room.getConnections()];
       this.hostConnId = conns[0]?.id ?? null;
     }
@@ -124,28 +121,52 @@ export default class PopularityServer implements Party.Server {
 
   // --- lobby actions ---
   private onJoin(sender: Party.Connection, msg: any) {
-    if (this.started) {
-      // Allow rejoin to a disconnected seat by name
-      const seat = this.seats.find(s => s.name === msg.name && s.connId === null);
-      if (seat) {
-        seat.connId = sender.id;
-        seat.isAI = false; // human resumes control
-        this.broadcast();
-        return;
-      }
-      return this.err(sender, "game already started");
-    }
-    const existing = this.seatForConn(sender.id);
-    if (existing) { existing.name = String(msg.name || existing.name).slice(0, 24); this.broadcast(); return; }
-    if (this.seats.length >= 8) return this.err(sender, "room full");
     const name = String(msg.name || `Player ${this.seats.length + 1}`).slice(0, 24);
-    this.seats.push({
-      id: this.seats.length,
-      name,
-      isAI: false,
-      connId: sender.id,
-      ready: true,
-    });
+
+    // 1. If this connection already has a seat, treat as rename.
+    const existingByConn = this.seatForConn(sender.id);
+    if (existingByConn) {
+      existingByConn.name = name;
+      if (this.G?.players[existingByConn.id]) this.G.players[existingByConn.id].name = name;
+      this.broadcast();
+      return;
+    }
+
+    // 2. If a seat with this name exists, claim/reclaim it (handles flaky reconnects).
+    const existingByName = this.seats.find(s => s.name === name);
+    if (existingByName) {
+      existingByName.connId = sender.id;
+      existingByName.isAI = false;
+      if (this.G?.players[existingByName.id]) this.G.players[existingByName.id].isAI = false;
+      this.G?.log?.push(`${name} (re)connected.`);
+      this.runAutoAndBroadcast();
+      return;
+    }
+
+    if (this.seats.length >= 8) return this.err(sender, "room full");
+
+    // 3. Late join after game start: add a fresh player with starter hand.
+    if (this.started) {
+      const newId = this.seats.length;
+      this.seats.push({ id: newId, name, isAI: false, connId: sender.id, ready: true });
+      this.G.players.push({
+        id: newId,
+        name,
+        isAI: false,
+        aiLevel: "heuristic",
+        hand: E.startingHand(this.G),
+        stack: [],
+        received: [],
+        eliminated: false,
+        diePips: this.G.useDie ? 1 : null,
+      });
+      this.G.log.push({ text: `${name} joined late — dealt a fresh hand.`, cls: "info" });
+      this.broadcast();
+      return;
+    }
+
+    // 4. Normal pre-start join.
+    this.seats.push({ id: this.seats.length, name, isAI: false, connId: sender.id, ready: true });
     this.broadcast();
   }
 
