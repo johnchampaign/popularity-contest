@@ -111,7 +111,7 @@ function connect() {
   socket = new PartySocket({
     host: HOST,
     room: roomId,
-    party: "popularity",
+    party: "main",
   });
   socket.addEventListener("open", () => { connStatus = "open"; render(); });
   socket.addEventListener("close", () => { connStatus = "closed"; render(); });
